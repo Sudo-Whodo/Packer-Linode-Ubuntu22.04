@@ -1,0 +1,65 @@
+---
+- hosts: default
+  become: true
+  tasks:
+  - name: Run apt update
+    ansible.builtin.apt:
+      update_cache: true
+
+  - name: Disable SWAP since kubernetes can't work with swap enabled (1/2)
+    shell: swapoff -a
+
+  - name: Disable SWAP in fstab since kubernetes can't work with swap enabled (2/2)
+    replace:
+      path: /etc/fstab
+      regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+      replace: '# \1'
+
+  #findmnt package isn't found normally
+  - name: Install basic commands
+    ansible.builtin.apt:
+      name: bash, curl, findmnt, grep, blkid, lsblk
+      state: present
+    ignore_errors: true
+
+  - name: Install open-iscsi & nfs-common
+    ansible.builtin.apt:
+      name: open-iscsi, nfs-common
+      state: present
+
+  - name: Add the iscsi_tcp module
+    community.general.modprobe:
+      name: iscsi_tcp
+      state: present
+
+  - name: Restart and enable open-iscsi service
+    ansible.builtin.service:
+      name: open-iscsi
+      state: restarted
+      enabled: true
+
+  - name: Restart and enable iscsid service
+    ansible.builtin.service:
+      name: iscsid
+      state: restarted
+      enabled: true
+
+  - name: Restart and enable multipathd.service service
+    ansible.builtin.service:
+      name: multipathd.service
+      state: restarted
+      enabled: true
+
+  - name: PATCH ALL THE THINGS!!!
+    ansible.builtin.apt:
+      name: "*"
+      state: latest
+      update_cache: true
+
+  - name: Remove unattended-upgrades
+    ansible.builtin.apt:
+      name: unattended-upgrades
+      state: absent
+
+  - name: Cloud init clean to prep image
+    shell: cloud-init clean
